@@ -511,10 +511,16 @@ describe AssignableValues::ActiveRecord do
     context 'when delegating using the :through option' do
 
       it 'should obtain allowed values from a method with the given name' do
+        class Power
+          def assignable_song_genres
+            %w[pop rock]
+          end
+        end
+
         klass = Song.disposable_copy do
           assignable_values_for :genre, :through => :delegate
           def delegate
-            OpenStruct.new(:assignable_song_genres => %w[pop rock])
+            Power.new
           end
         end
         klass.new(:genre => 'pop').should be_valid
@@ -522,10 +528,16 @@ describe AssignableValues::ActiveRecord do
       end
 
       it 'should be able to delegate to a lambda, which is evaluated in the context of the record instance' do
+        class Power
+          def assignable_song_genres
+            %w[pop rock]
+          end
+        end
+
         klass = Song.disposable_copy do
           assignable_values_for :genre, :through => lambda { delegate }
           def delegate
-            OpenStruct.new(:assignable_song_genres => %w[pop rock])
+            Power.new
           end
         end
         klass.new(:genre => 'pop').should be_valid
@@ -533,10 +545,17 @@ describe AssignableValues::ActiveRecord do
       end
 
       it 'should generate a legal getter name for a namespaced model (bugfix)' do
+        class Power
+          def assignable_recording_vinyl_years
+            [1977, 1980, 1983]
+          end
+        end
+
         klass = Recording::Vinyl.disposable_copy do
           assignable_values_for :year, :through => :delegate
           def delegate
-            OpenStruct.new(:assignable_recording_vinyl_years => [1977, 1980, 1983])
+            Power.new
+            # OpenStruct.new(:assignable_recording_vinyl_years => [1977, 1980, 1983])
           end
         end
         klass.new.assignable_years.should == [1977, 1980, 1983]
@@ -949,13 +968,11 @@ describe AssignableValues::ActiveRecord do
           expect { klass.new.assignable_genres }.to raise_error(AssignableValues::DelegateUnavailable)
         end
 
-        it 'should accept procs that delegate to methods with params' do
-
+        it 'should be able to delegate methods that alias other methods with var_args istead of a fixed arity' do
           class Power
             def assignable_song_genres(arg)
               %w[pop rock]
             end
-
             alias_method :_unmemoized_assignable_song_genres, :assignable_song_genres
             define_method :assignable_song_genres do |*args|
               memoized_value = {args => self.send(:_unmemoized_assignable_song_genres, *args)}
@@ -964,12 +981,14 @@ describe AssignableValues::ActiveRecord do
           end
 
           klass = Song.disposable_copy do
-            assignable_values_for :genre, through: proc { Power.new }
-          end
+            assignable_values_for :genre, :through => :delegate
 
+            def delegate
+              Power.new
+            end
+          end
           record = klass.new
-          genres = record.assignable_genres
-          genres.should ==  %w[pop rock]
+          record.assignable_genres.should ==  %w[pop rock]
         end
 
       end
