@@ -1055,5 +1055,5 @@ describe AssignableValues::ActiveRecord do
         end
       end
     end
-  end
+  end 
 end
