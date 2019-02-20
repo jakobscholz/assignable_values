@@ -511,10 +511,15 @@ describe AssignableValues::ActiveRecord do
     context 'when delegating using the :through option' do
 
       it 'should obtain allowed values from a method with the given name' do
+
         klass = Song.disposable_copy do
           assignable_values_for :genre, :through => :delegate
           def delegate
-            OpenStruct.new(:assignable_song_genres => %w[pop rock])
+            Class.new do
+              def assignable_song_genres
+                %w[pop rock]
+              end
+            end.new
           end
         end
         klass.new(:genre => 'pop').should be_valid
@@ -525,9 +530,14 @@ describe AssignableValues::ActiveRecord do
         klass = Song.disposable_copy do
           assignable_values_for :genre, :through => lambda { delegate }
           def delegate
-            OpenStruct.new(:assignable_song_genres => %w[pop rock])
+            Class.new do
+              def assignable_song_genres
+                %w[pop rock]
+              end
+            end.new
           end
         end
+
         klass.new(:genre => 'pop').should be_valid
         klass.new(:genre => 'disallowed value').should_not be_valid
       end
@@ -536,7 +546,11 @@ describe AssignableValues::ActiveRecord do
         klass = Recording::Vinyl.disposable_copy do
           assignable_values_for :year, :through => :delegate
           def delegate
-            OpenStruct.new(:assignable_recording_vinyl_years => [1977, 1980, 1983])
+            Class.new do
+              def assignable_recording_vinyl_years
+                [1977, 1980, 1983]
+              end
+            end.new
           end
         end
         klass.new.assignable_years.should == [1977, 1980, 1983]
@@ -949,10 +963,97 @@ describe AssignableValues::ActiveRecord do
           expect { klass.new.assignable_genres }.to raise_error(AssignableValues::DelegateUnavailable)
         end
 
+        context 'the arity of the delegated method is negative' do
+
+          RSpec::Matchers.define :one_argument do
+            match { |actual| !actual.instance_of?(Array) }
+          end
+
+          it 'should be called with one argument' do
+            obj = double
+            expect(obj).to receive(:assignable_song_genres).with(one_argument)
+
+            klass = Song.disposable_copy do
+              assignable_values_for :genre, :through => :delegate
+
+              define_method(:delegate) do
+                obj
+              end
+            end
+
+            record = klass.new
+            record.assignable_genres
+          end
+
+          it 'should accept calls without arguments' do
+            klass = Song.disposable_copy do
+              assignable_values_for :genre, :through => :delegate
+
+              def delegate
+                Class.new do
+                  def genres
+                    %w[pop rock]
+                  end
+
+                  def assignable_song_genres
+                    send(:genres)
+                  end
+                end.new
+              end
+            end
+
+            record = klass.new
+            record.assignable_genres.should ==  %w[pop rock]
+          end
+
+          it 'should not accept calls with more then one argument' do
+            klass = Song.disposable_copy do
+              assignable_values_for :genre, :through => :delegate
+
+              def delegate
+                Class.new do
+                  def genres(arg1, arg2)
+                    %w[pop rock]
+                  end
+
+                  def assignable_song_genres(*args)
+                    send(:genres, *args)
+                  end
+                end.new
+              end
+            end
+
+            record = klass.new
+
+            expect{record.assignable_genres}.to raise_error do |err|
+              expect(err).to be_an_instance_of(ArgumentError)
+            end
+          end
+
+          it 'should accept calls with one argument' do
+            deleg_klass = Class.new do
+              def genres(arg)
+                %w[pop rock]
+              end
+
+              def assignable_song_genres(*args)
+                send(:genres, *args)
+              end
+            end.new
+
+            klass = Song.disposable_copy do
+              assignable_values_for :genre, :through => :delegate
+
+              define_method(:delegate) do
+                deleg_klass
+              end
+            end
+
+            record = klass.new
+            record.assignable_genres.should ==  %w[pop rock]
+          end
+        end
       end
-
     end
-
   end
-
 end
