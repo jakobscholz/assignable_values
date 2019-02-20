@@ -949,6 +949,29 @@ describe AssignableValues::ActiveRecord do
           expect { klass.new.assignable_genres }.to raise_error(AssignableValues::DelegateUnavailable)
         end
 
+        it 'should accept procs that delegate to methods with params' do
+
+          class Power
+            def assignable_song_genres(arg)
+              %w[pop rock]
+            end
+
+            alias_method :_unmemoized_assignable_song_genres, :assignable_song_genres
+            define_method :assignable_song_genres do |*args|
+              memoized_value = {args => self.send(:_unmemoized_assignable_song_genres, *args)}
+              memoized_value[args]
+            end
+          end
+
+          klass = Song.disposable_copy do
+            assignable_values_for :genre, through: proc { Power.new }
+          end
+
+          record = klass.new
+          genres = record.assignable_genres
+          genres.should ==  %w[pop rock]
+        end
+
       end
 
     end
